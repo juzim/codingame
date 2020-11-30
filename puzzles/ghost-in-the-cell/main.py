@@ -98,33 +98,48 @@ def build_factory_maps(input_list):
 
 
 
-def handle_loop_julian(fact_map_own, fact_map_neutral, fact_map_enemy, link_dist_map):
+def handle_loop_julian(fact_map_own, fact_map_neutral, fact_map_enemy, link_dist_map, turn):
     actions = []
+    if turn <= 3 or len(fact_map_neutral) > 0:
+        for source in sorted(fact_map_own, key=lambda f: f.cyborg_count):
+            print('[INFO] handling source', source, file=sys.stderr, flush=True)
+            
+            # @todo more for high prod
+            att_per_target = math.floor(source.cyborg_count / len(fact_map_neutral))
+            # @todo sort by production
 
-    for source in fact_map_own:
-        print('[INFO] handling source', source, file=sys.stderr, flush=True)
+            available_c = source.cyborg_count
+            for target in sorted(fact_map_neutral, key=(lambda f : (f.production, f.cyborg_count)), reverse=True):
+                print('[INFO] handling target', target, file=sys.stderr, flush=True)
+                # if source.cyborg_count > att_per_target + 1:
+                if available_c > target.cyborg_count + 2:
+                    action = MoveAction(source, target, target.cyborg_count + 1)
+                    print(f'[ATTACK] {action}', file=sys.stderr, flush=True)
+                   
+                    actions.append(action)
+                    available_c -= target.cyborg_count + 1
+            
 
-            # print('looking for target', file=sys.stderr, flush=True)
-        if source.cyborg_count <= 5:
-            # print('[SKIP] source is empty', source.cyborg_count, file=sys.stderr, flush=True)
-            continue
+            if turn == 1:
+                for target in fact_map_enemy:
+                    print('[INFO] handling enemy', target, file=sys.stderr, flush=True)
+                    actions.append(BombAction(source, target))
 
-        for target in fact_map_neutral + fact_map_enemy:
-            attackers = 0
-            print('[INFO] handling target', target, file=sys.stderr, flush=True)
+    else:
+        # easy_targets
+        for source in sorted(fact_map_own, key=lambda f: f.cyborg_count):
+            print('[INFO] handling source', source, file=sys.stderr, flush=True)
+            available_c = source.cyborg_count
 
-            if target.cyborg_count >= source.cyborg_count:
-                print('[SKIP] target is stronger', f'{target.cyborg_count} vs {source.cyborg_count}', file=sys.stderr, flush=True)
-                continue
-
-            if target.cyborg_count == 0:
-                attackers = 5 if source.cyborg_count > 10 else 1 if source.cyborg_count > 2 else 0
-            else:
-                attackers = int(target.cyborg_count) + 1
-
-            if attackers > 0:
-                actions.append(MoveAction(source, target, attackers))
-                break
+            for target in sorted(fact_map_enemy, key=lambda f: (f.cyborg_count, f.production), reverse=True):
+                print('[INFO] handling enemy', target, file=sys.stderr, flush=True)
+                if available_c > target.cyborg_count + 2:
+                    action = MoveAction(source, target, target.cyborg_count + 1)
+                    print(f'[ATTACK] {action}', source, file=sys.stderr, flush=True)
+                    actions.append(action)
+                    available_c -= target.cyborg_count + 1
+            # if available_c < 3:
+            #     break 
 
     return actions
  
@@ -138,9 +153,11 @@ if __name__ == "__main__":
     for _ in range(link_count):
         factory_1, factory_2, distance = [int(j) for j in input().split()]
         link_dist_map[tuple(sorted([factory_1, factory_2]))] = distance
-       
+    
+    turn = 0
     # game loop
     while True:
+        turn += 1
         entity_count = int(input())  # the number of entities (e.g. factories and troops)
 
         inputs = []
@@ -165,7 +182,7 @@ if __name__ == "__main__":
             else:
                 fact_map_enemy.append(cur_fact)
 
-        actions = handle_loop_julian(fact_map_own, fact_map_neutral, fact_map_enemy, link_dist_map)
+        actions = handle_loop_julian(fact_map_own, fact_map_neutral, fact_map_enemy, link_dist_map, turn)
 
         if len(actions) > 0:
             print('; '.join([str(a) for a in actions]))
