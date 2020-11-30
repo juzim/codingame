@@ -9,6 +9,16 @@ class Types(Enum):
     TROOP = 2
     BOMB = 3
 
+LOG_LEVEL = 3
+
+def log_debug(topic, message):
+    if LOG_LEVEL >= 3:
+        print(f'[DEBUG][{topic}]', message, file=sys.stderr, flush=True)
+
+def log_info(topic, message):
+    if LOG_LEVEL >= 2:
+        print(f'[INFO][{topic}]', message, file=sys.stderr, flush=True)
+
 
 class Factory:
     def __init__(self, inputs):
@@ -25,14 +35,6 @@ class Factory:
 
     def __str__(self):
         return f'id: {self.entity_id}, owned: {self.owner}, count: {self.cyborg_count}'
-
-class HasAttackedException(Exception):
-    def __init__(self, source, target, number, message='has attacked'):
-        self.source = source
-        self.target = target
-        self.number = number
-        self.message = message
-        super().__init__(self.message)
 
 class Action:
     
@@ -84,76 +86,106 @@ class DistanceCalculator:
 
         return nearest[1]
 
+class Strategy:
+
+    def __init__(self, owned: List[Factory], neutral: List[Factory], enemy: List[Factory], distances):
+        self.owned = owned
+        self.neutral = neutral
+        self.enemy = enemy
+        self.distances = distances
+        self.distance_calculator = DistanceCalculator(distances)
+
+
+    def run(self) -> List[Action]:
+        raise NotImplementedError
+
+class StrategyMoveSwarmNeutral(Strategy):
+
+    def run(self):
+        print('[STRATEGY] StrategyMoveSwarmNeutral', file=sys.stderr, flush=True)
+
+        targeted = []
+
+        actions = []
+        for source in sorted(self.owned, key=lambda f: f.cyborg_count):
+            log_debug('handling source', source)
+            
+            # @todo more for high prod
+            att_per_target = math.floor(source.cyborg_count / len(self.neutral))
+            # @todo sort by production
+
+            for target in sorted(self.neutral, key=(lambda f : (f.production, f.cyborg_count)), reverse=True):
+                if target.entity_id in targeted:
+                    continue
+
+                if source.cyborg_count < 4:
+                    break
+                log_debug('handling target', target)
+                # if source.cyborg_count > att_per_target + 1:
+                if source.cyborg_count > target.cyborg_count + 4:
+                    action = MoveAction(source, target, target.cyborg_count + 1)
+                    log_info(f'[ATTACK]', action)
+                    
+                    actions.append(action)
+                    source.cyborg_count -= target.cyborg_count + 1
+                    targeted.append(target.entity_id)
+
+            
+            if source.cyborg_count < 4:
+                break
+
+        return actions
+
+class StrategyBombFirstTarget(Strategy):
+    
+    def run(self):
+        for source in sorted(self.owned, key=lambda f: f.cyborg_count):
+            log_debug('handling source', source)
+            for target in self.enemy:
+                log_debug('handling enemy', target)
+                return [BombAction(source, target)]
+
+class StrategyMoveEasyTargets(Strategy):
+
+    def run(self):
+        actions = []
+        for source in sorted(fact_map_own, key=lambda f: f.cyborg_count):
+            log_debug('handling source', source)
+
+            for target in sorted(fact_map_enemy, key=lambda f: (f.cyborg_count, f.production), reverse=True):
+                log_debug('handling enemy', target)
+                if source.cyborg_count > target.cyborg_count + 2:
+                    action = MoveAction(source, target, target.cyborg_count + 1)
+                    log_info(f'[ATTACK]', action)
+                    actions.append(action)
+                    source.cyborg_count -= target.cyborg_count + 1
+
+        return actions
+
+
+
+
+
 def sort_targets(x, y):
     return x.cyborg_count > y.cyborg_count
 
-def build_factory_maps(input_list):
-    fact_map_own = []
-    fact_map_neutral = []
-    fact_map_enemy = []
 
-    for i in input_list:
-        m_entity_type = i[1]
-        if m_entity_type != Types.FACTORY:
-            continue
-
-        cur_fact = Factory(i)
-        if cur_fact.owner == 1:
-            fact_map_own.append(cur_fact)
-        elif cur_fact.owner == 0:
-            fact_map_neutral.append(cur_fact)
-        else:
-            fact_map_enemy.append(cur_fact)
-
-    return fact_map_own, fact_map_neutral, fact_map_enemy
-
-
-
-def handle_loop_julian(fact_map_own, fact_map_neutral, fact_map_enemy, link_dist_map, turn):
+def handle_loop_julian_tryouts(fact_map_own, fact_map_neutral, fact_map_enemy, link_dist_map, turn):
     actions = []
+
+    strategies = []
+
+    if turn == 1:
+        strategies.append(StrategyBombFirstTarget(fact_map_own, fact_map_neutral, fact_map_enemy, link_dist_map))
+
     if turn <= 3 or len(fact_map_neutral) > 0:
-        for source in sorted(fact_map_own, key=lambda f: f.cyborg_count):
-            print('[INFO] handling source', source, file=sys.stderr, flush=True)
-            
-            # @todo more for high prod
-            att_per_target = math.floor(source.cyborg_count / len(fact_map_neutral))
-            # @todo sort by production
-
-            available_c = source.cyborg_count
-            for target in sorted(fact_map_neutral, key=(lambda f : (f.production, f.cyborg_count)), reverse=True):
-                print('[INFO] handling target', target, file=sys.stderr, flush=True)
-                # if source.cyborg_count > att_per_target + 1:
-                if available_c > target.cyborg_count + 2:
-                    action = MoveAction(source, target, target.cyborg_count + 1)
-                    print(f'[ATTACK] {action}', file=sys.stderr, flush=True)
-                   
-                    actions.append(action)
-                    available_c -= target.cyborg_count + 1
-            
-
-            if turn == 1:
-                for target in fact_map_enemy:
-                    print('[INFO] handling enemy', target, file=sys.stderr, flush=True)
-                    actions.append(BombAction(source, target))
-
+        strategies.append(StrategyMoveSwarmNeutral(fact_map_own, fact_map_neutral, fact_map_enemy, link_dist_map))
     else:
-        # easy_targets
-        for source in sorted(fact_map_own, key=lambda f: f.cyborg_count):
-            print('[INFO] handling source', source, file=sys.stderr, flush=True)
-            available_c = source.cyborg_count
-
-            for target in sorted(fact_map_enemy, key=lambda f: (f.cyborg_count, f.production), reverse=True):
-                print('[INFO] handling enemy', target, file=sys.stderr, flush=True)
-                if available_c > target.cyborg_count + 2:
-                    action = MoveAction(source, target, target.cyborg_count + 1)
-                    print(f'[ATTACK] {action}', source, file=sys.stderr, flush=True)
-                    actions.append(action)
-                    available_c -= target.cyborg_count + 1
-            # if available_c < 3:
-            #     break 
-
+        strategies.append(StrategyMoveEasyTargets(fact_map_own, fact_map_neutral, fact_map_enemy, link_dist_map))
+    
+    for s in strategies:
+        actions += s.run()
     return actions
- 
 
 if __name__ == "__main__":
     factory_count = int(input())  # the number of factories
@@ -193,7 +225,7 @@ if __name__ == "__main__":
             else:
                 fact_map_enemy.append(cur_fact)
 
-        actions = handle_loop_julian(fact_map_own, fact_map_neutral, fact_map_enemy, link_dist_map, turn)
+        actions = handle_loop_julian_tryouts(fact_map_own, fact_map_neutral, fact_map_enemy, link_dist_map, turn)
 
         if len(actions) > 0:
             print('; '.join([str(a) for a in actions]))
