@@ -2,6 +2,7 @@ import sys
 import math
 from enum import Enum
 import functools
+from typing import List
 
 class Types(Enum):
     FACTORY = 1
@@ -72,7 +73,17 @@ class DistanceCalculator:
 
     def get_distance(self, source: Factory, target: Factory):
         return self.distance_map[tuple(sorted([source.entity_id, target.entity_id]))]
-        
+
+    def get_nearest(self, source: Factory, targets: List[Factory]) -> Factory:
+        nearest = None
+
+        for target in targets:
+            dist = self.get_distance(source, target)
+            if not nearest or dist > nearest[0]:
+                nearest = (dist, target)
+
+        return nearest[1]
+
 def sort_targets(x, y):
     return x.cyborg_count > y.cyborg_count
 
