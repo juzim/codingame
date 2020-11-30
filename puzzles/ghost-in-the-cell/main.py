@@ -44,7 +44,7 @@ class MoveAction(Action):
         self.source = source
         self.target = target
         self.number = number
-        print('[QUEUE ATTACK]', f'{source.entity_id} -> {target.entity_id} with {attackers}', file=sys.stderr, flush=True)
+        print('[QUEUE ATTACK]', f'{source.entity_id} -> {target.entity_id} with {number}', file=sys.stderr, flush=True)
 
     def __str__(self):
         return f'MOVE {self.source.entity_id} {self.target.entity_id} {self.number}'
@@ -54,6 +54,7 @@ class BombAction(Action):
     def __init__(self, source: Factory, target: Factory):
         self.source = source
         self.target = target
+        print('[QUEUE BOMB]', f'{source.entity_id} -> {target.entity_id}', file=sys.stderr, flush=True)
 
     def __str__(self):
         return f'BOMB {self.source.entity_id} {self.target.entity_id}'
@@ -61,6 +62,7 @@ class BombAction(Action):
 class WaitAction(Action):
 
     def __str__(self):
+        print('[DO WAIT]', file=sys.stderr, flush=True)
         return 'WAIT'
 
 class DistanceCalculator:
@@ -98,6 +100,7 @@ def build_factory_maps(input_list):
 
 def handle_loop_julian(fact_map_own, fact_map_neutral, fact_map_enemy, link_dist_map):
     actions = []
+
     for source in fact_map_own:
         print('[INFO] handling source', source, file=sys.stderr, flush=True)
 
@@ -144,8 +147,25 @@ if __name__ == "__main__":
 
         for _ in range(entity_count):
             inputs.append(input().split())
-    
-        actions = handle_loop_julian(*build_factory_maps(inputs), link_dist_map)
+
+        fact_map_own = []
+        fact_map_neutral = []
+        fact_map_enemy = []
+
+        for i in inputs:
+            m_entity_type = i[1]
+            if m_entity_type != Types.FACTORY.name:
+                continue
+
+            cur_fact = Factory(i)
+            if cur_fact.owner == 1:
+                fact_map_own.append(cur_fact)
+            elif cur_fact.owner == 0:
+                fact_map_neutral.append(cur_fact)
+            else:
+                fact_map_enemy.append(cur_fact)
+
+        actions = handle_loop_julian(fact_map_own, fact_map_neutral, fact_map_enemy, link_dist_map)
 
         if len(actions) > 0:
             print('; '.join([str(a) for a in actions]))
